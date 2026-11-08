@@ -1,0 +1,38 @@
+{
+  "bandwidth_mhz": 20,
+  "drones": [
+    {
+      "id": "drone1",
+      "link_id": 1,
+      "frequency_mhz": 2412,
+      "gs_interface": "REPLACE_GS_RADIO_1",
+      "gs_video_port": 5600,
+      "air_api_port": 18090,
+      "gs_feedback_port": 5800,
+      "gs_control_port": 9101,
+      "gs_status_port": 8091
+    },
+    {
+      "id": "drone2",
+      "link_id": 2,
+      "frequency_mhz": 2437,
+      "gs_interface": "REPLACE_GS_RADIO_2",
+      "gs_video_port": 5602,
+      "air_api_port": 18091,
+      "gs_feedback_port": 5802,
+      "gs_control_port": 9102,
+      "gs_status_port": 8093
+    },
+    {
+      "id": "drone3",
+      "link_id": 3,
+      "frequency_mhz": 2462,
+      "gs_interface": "REPLACE_GS_RADIO_3",
+      "gs_video_port": 5604,
+      "air_api_port": 18092,
+      "gs_feedback_port": 5804,
+      "gs_control_port": 9103,
+      "gs_status_port": 8095
+    }
+  ]
+}
