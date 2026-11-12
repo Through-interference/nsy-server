@@ -133,5 +133,11 @@ class TelemetryTests(unittest.TestCase):
             with self.subTest(extra=extra), self.assertRaises(ValueError):
                 validate(parser().parse_args(['--role', 'air', '--interface', 'radio1', *extra]))
 
+    def test_external_application_input_requires_an_explicit_peer(self):
+        options=['--role','air','--interface','radio1','--input-bind','192.168.1.2']
+        with self.assertRaises(ValueError):validate(parser().parse_args(options))
+        args=validate(parser().parse_args(options+['--input-peer','192.168.1.3']))
+        self.assertEqual(args.input_peer,'192.168.1.3')
+
 
 if __name__ == '__main__':unittest.main()

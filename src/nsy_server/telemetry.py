@@ -2,6 +2,7 @@
 import argparse
 import datetime
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -234,6 +235,8 @@ def parser():
     ap.add_argument('--rx-port', type=int)
     ap.add_argument('--control-port', type=int)
     ap.add_argument('--input-port', type=int, help='localhost input: air telemetry 14550 / ground commands 14551')
+    ap.add_argument('--input-bind', default='127.0.0.1', help='local input IPv4; an external bind requires --input-peer')
+    ap.add_argument('--input-peer', help='accept application UDP only from this IPv4')
     ap.add_argument('--output-port', type=int, help='localhost destination: air commands 14551 / ground telemetry 14550')
     ap.add_argument('--test-peer-port', type=int, help='udp-test only; no WFB/radio/encryption')
     ap.add_argument('--benchmark-seconds', type=float, default=0, help='air: generated checked load, not flight data')
@@ -252,6 +255,15 @@ def parser():
 
 
 def validate(args):
+    try:
+        address = ipaddress.IPv4Address(args.input_bind)
+        peer = ipaddress.IPv4Address(args.input_peer) if args.input_peer else None
+    except ipaddress.AddressValueError as exc:
+        raise ValueError('Invalid application UDP IPv4') from exc
+    if address.is_multicast or (peer is not None and (peer.is_multicast or peer.is_unspecified)):
+        raise ValueError('Application UDP needs unicast addresses')
+    if not address.is_loopback and peer is None:
+        raise ValueError('External UDP input requires --input-peer')
     for key in ('benchmark_seconds', 'minimum_seconds', 'seconds', 'outage_seconds'):
         if not math.isfinite(getattr(args, key)) or getattr(args, key) < 0:
             raise ValueError('Invalid ' + key)
@@ -318,6 +330,8 @@ def main(argv=None):
                     target_bps=args.target_bps, minimum_seconds=args.minimum_seconds,
                     requested_tx_power_limit_dbm=args.tx_power_dbm,
                     software=software_identity(),
+                    application_udp=dict(input_bind=args.input_bind, input_port=args.input_port,
+                                         input_peer=args.input_peer, output_host='127.0.0.1', output_port=args.output_port),
                     max_loss_fraction=args.max_loss, source='generated_load' if args.benchmark_seconds else 'live_udp' if args.role == 'air' else 'receive_only',
                     site=site, range_confirmed=False, binaries={})
     if radio:
@@ -346,7 +360,7 @@ def main(argv=None):
         sock.setblocking(False)
         if args.role == 'ground' or not args.benchmark_seconds:
             source = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            source.bind(('127.0.0.1', args.input_port));source.setblocking(False)
+            source.bind((args.input_bind, args.input_port));source.setblocking(False)
         if radio:radio.prepare()
         start = time.monotonic()
         link.started = link.switched = start
@@ -426,7 +440,9 @@ def main(argv=None):
             readable, _, _ = select.select([sock] + ([source] if source else []), [], [], .01)
             for endpoint in readable:
                 if endpoint is source:
-                    payload = source.recv(65535)
+                    payload, address = source.recvfrom(65535)
+                    if args.input_peer and address[0] != args.input_peer:
+                        journal.write('input_rejected', reason='unexpected_peer', peer=address[0]);invalid += 1;continue
                     if not 0 < len(payload) <= MAX_PAYLOAD:
                         journal.write('input_rejected', bytes=len(payload));invalid += 1;continue
                     tx_sequence += 1

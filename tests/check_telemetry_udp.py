@@ -14,6 +14,30 @@ def free_port():
         sock.bind(('127.0.0.1',0));return sock.getsockname()[1]
 
 
+def check_peer_filter(args):
+    """Configure a nonmatching allow-list; no secondary loopback alias is needed."""
+    directory=args.output.resolve()/'peer-filter'
+    rx,input_port=free_port(),free_port()
+    environment=os.environ.copy();environment['PYTHONPATH']=str(args.air_repo.resolve()/'src')
+    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as peer,socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sender,(args.output/'peer-filter.log').open('w') as log:
+        peer.bind(('127.0.0.1',0))
+        command=[sys.executable,'-m','bvs_camera.telemetry','--role','air','--mode','udp-test',
+                 '--rx-port',str(rx),'--test-peer-port',str(peer.getsockname()[1]),
+                 '--input-port',str(input_port),'--input-peer','127.0.0.2','--seconds','2','--output',str(directory)]
+        child=subprocess.Popen(command,env=environment,stdout=log,stderr=log)
+        try:
+            deadline=time.monotonic()+2
+            while not (directory/'status.json').exists() and time.monotonic()<deadline:time.sleep(.01)
+            assert (directory/'status.json').exists(),'Peer-filter fixture did not start'
+            sender.sendto(b'reject-this-peer',('127.0.0.1',input_port))
+            assert child.wait(timeout=5)==0
+        finally:
+            if child.poll() is None:child.terminate();child.wait(timeout=5)
+    report=json.loads((directory/'report.json').read_text())
+    assert report['invalid_packets']>=1
+    assert report['attempted_packets']==0
+
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--air-repo',type=Path,required=True)
@@ -33,6 +57,7 @@ def main():
                 command=[sys.executable,'-m',package+'.telemetry','--role',role,'--mode','udp-test',
                          '--rx-port',str(rx),'--test-peer-port',str(peer),'--seconds','5',
                          '--input-port',str(source_port if role=='air' else command_input),
+                         '--input-peer','127.0.0.1',
                          '--output-port',str(command_output if role=='air' else output_port),
                          '--output',str(args.output.resolve()/role)]
                 environment=os.environ.copy();environment['PYTHONPATH']=str(repo/'src')
@@ -63,8 +88,10 @@ def main():
     assert air_report['forwarded_packets']==len(commands)
     assert report['reception']['source']=='live_udp'
     assert not report['range_confirmed']
+    check_peer_filter(args)
     print(json.dumps(dict(scope='localhost_only_no_radio',forwarded_packets=len(payloads),
                           reverse_commands_preserved=len(commands),
+                          peer_filter_rejection_verified=True,
                           payload_bytes=sum(map(len,payloads)),payloads_preserved=True)))
 
 
