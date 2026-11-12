@@ -1,0 +1,16 @@
+{
+  "site_name": "ЗАПОЛНИТЬ: бортовая или наземная точка",
+  "latitude": null,
+  "longitude": null,
+  "position_evidence": "ЗАПОЛНИТЬ: GPS/GPX, дата и время фиксации",
+  "antenna_model": "ЗАПОЛНИТЬ",
+  "antenna_count": null,
+  "antenna_layout_evidence": "ЗАПОЛНИТЬ: схема/фото подключения двух антенн",
+  "antenna_gain_dbi": null,
+  "feed_loss_db": null,
+  "antenna_height_m": null,
+  "polarization": "ЗАПОЛНИТЬ",
+  "eirp_limit_dbm": null,
+  "power_limit_basis": "ЗАПОЛНИТЬ: согласованный для места и оборудования предел",
+  "operator": "ЗАПОЛНИТЬ"
+}

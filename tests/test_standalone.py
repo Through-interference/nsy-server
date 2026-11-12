@@ -11,7 +11,7 @@ class StandaloneTests(unittest.TestCase):
      self.assertFalse(name.startswith(('bvs_camera','skvoz_video')),str(path)+': '+name)
  def test_help_from_another_working_directory(self):
   with tempfile.TemporaryDirectory() as cwd:
-   for name in ('ground_station', 'rtp_receiver', 'radio_launcher', 'feedback', 'fdma', 'record_run', 'udp_link'):
+   for name in ('ground_station', 'rtp_receiver', 'radio_launcher', 'feedback', 'fdma', 'record_run', 'udp_link', 'telemetry', 'telemetry_report'):
     with self.subTest(module=name):
      p=subprocess.run(module_command(name,'--help'),cwd=cwd,env=child_env(),capture_output=True,text=True,timeout=10)
      self.assertEqual(p.returncode,0,p.stderr)
