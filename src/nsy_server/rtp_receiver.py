@@ -20,13 +20,19 @@ class ReceiverLink:
             return dict(link=dict(self.metric) if self.metric else None,link_age_s=round(age,2) if age is not None else None,link_state=state)
 
 class DecoderRecovery:
-    """One hardware-to-software recovery, shared by startup, bus and push errors."""
-    def __init__(self,mode):self.mode=mode;self.disabled=False
+    """Fall back once from hardware; restart failed software pipelines with backoff."""
+    def __init__(self,mode,clock=time.monotonic):
+        self.mode=mode;self.clock=clock;self.disabled=False;self.restarts=0;self.retry_at=0
     def handle(self,kind,error,pipeline,null_state):
-        if self.mode!='auto' or kind!='hardware' or self.disabled:return False
-        self.disabled=True
+        if kind=='hardware':
+            if self.mode!='auto' or self.disabled:return False
+            self.disabled=True;event='hardware_fallback'
+        elif kind in ('software','jpeg') and self.mode!='hardware' and pipeline is not None:
+            self.restarts+=1;event='decoder_restart'
+        else:return False
         if pipeline:pipeline.set_state(null_state)
-        print(json.dumps(dict(event='hardware_fallback',error=str(error))),flush=True)
+        self.retry_at=self.clock()+.5
+        print(json.dumps(dict(event=event,error=str(error))),flush=True)
         return True
 
 def main():
@@ -47,14 +53,17 @@ def main():
     pipeline=source=None;pt=None;last_switch=0;candidate=None;candidate_count=0;decoded=0;codecs=[]
     class View:
         def __init__(self):self.condition=threading.Condition();self.closing=False;self.frame=None;self.frames=0;self.last_frame=None
-        def status(self):return dict(frames=self.frames,codec=codecs[-1] if codecs else None,frame_age_s=round(time.monotonic()-self.last_frame,2) if self.last_frame else None,rtp_queue_buffers=source.get_property('current-level-buffers') if source else 0,rtp_queue_bytes=source.get_property('current-level-bytes') if source else 0)
+        def status(self):
+            current=source
+            return dict(frames=self.frames,codec=codecs[-1] if codecs else None,frame_age_s=round(time.monotonic()-self.last_frame,2) if self.last_frame else None,rtp_queue_buffers=current.get_property('current-level-buffers') if current else 0,rtp_queue_bytes=current.get_property('current-level-bytes') if current else 0)
     stats=RuntimeStats();decoder_kind=None;recovery=DecoderRecovery(args.decoder)
     original_status=View.status
     def status(self):
         result=original_status(self)
-        result.update(stats.sample(source.get_property('current-level-time')/1e6 if source else 0))
-        if pipeline:
-            jitter=pipeline.get_by_name('jitter')
+        current_source,current_pipeline=source,pipeline
+        result.update(stats.sample(current_source.get_property('current-level-time')/1e6 if current_source else 0))
+        if current_pipeline:
+            jitter=current_pipeline.get_by_name('jitter')
             if jitter:
                 j=jitter.get_property('stats')
                 result['rtp_late_packets']=j.get_value('num-late');result['rtp_lost_packets']=j.get_value('num-lost')
@@ -62,6 +71,7 @@ def main():
         result.update(station_mode=args.station_mode,station_name=args.station_name,video_state='waiting' if self.last_frame is None else ('stale' if time.monotonic()-self.last_frame>1 else 'receiving'))
         result['decoder']=decoder_kind
         result['hardware_fallback']=recovery.disabled
+        result['decoder_restarts']=recovery.restarts
         return result
     View.status=status
     view=View();web=None;link=ReceiverLink()
@@ -103,9 +113,12 @@ def main():
         pipeline=source=None;pt=candidate=None;candidate_count=0
     def check_pipeline(result=None):
         if not pipeline:return False
-        message=pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR)
+        message=pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR | Gst.MessageType.EOS)
         if message:
-            error,debug=message.parse_error();handle_failure(str(error)+' '+str(debug));return True
+            if message.type==Gst.MessageType.EOS:handle_failure('Decoder reached end of stream')
+            else:
+                error,debug=message.parse_error();handle_failure(str(error)+' '+str(debug))
+            return True
         if result is not None and result!=Gst.FlowReturn.OK:
             handle_failure('Decoder rejected packet: '+str(result));return True
         return False
@@ -115,6 +128,7 @@ def main():
             try:data,_=sock.recvfrom(65535)
             except socket.timeout:
                 check_pipeline();continue
+            if time.monotonic()<recovery.retry_at:continue
             if len(data)<12 or data[0]>>6!=2:continue
             incoming=data[1]&127
             if incoming not in (26,96):continue
