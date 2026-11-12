@@ -36,13 +36,22 @@ class Metric:
 
 def normalize_json(msg, stream_id=None):
     """WFB-ng JSON API uses per-interval,total pairs and one row per antenna."""
+    if not isinstance(msg,dict):raise ValueError('Expected a telemetry object')
     if msg.get('type') != 'rx' or (stream_id is not None and msg.get('id') != stream_id):
         return None
     packets = msg['packets']
+    if not isinstance(packets,dict):raise ValueError('Expected packet counters')
+    antennas=msg.get('rx_ant_stats',[])
+    if not isinstance(antennas,list) or any(not isinstance(a,dict) for a in antennas):
+        raise ValueError('Expected antenna measurement objects')
     def val(key):
         v = packets.get(key, (0,0))
-        return int(v[0] if isinstance(v, (list,tuple)) else v)
-    return from_counters({k:val(k) for k in ('out','lost','frags','frags_lost')}, msg.get('rx_ant_stats', []))
+        if isinstance(v,(list,tuple)):
+            if len(v)!=2:raise ValueError('Expected interval and total counters')
+            v=v[0]
+        if type(v) is not int or v<0:raise ValueError('Expected nonnegative integer counter')
+        return v
+    return from_counters({k:val(k) for k in ('out','lost','frags','frags_lost')}, antennas)
 
 
 def from_counters(counters, antennas, source='wfb'):

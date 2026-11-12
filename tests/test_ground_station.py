@@ -40,7 +40,7 @@ class GroundStationTests(unittest.TestCase):
         self.assertIn('nsy_server.radio_launcher',command)
         self.assertEqual(command[command.index('--role')+1],'ground')
         self.assertEqual(command[command.index('--interface')+1],'usb_radio')
-        self.assertEqual(command[command.index('--keys')+1],'/tmp/matching-keys')
+        self.assertEqual(command[command.index('--keys')+1],str(Path('/tmp/matching-keys').resolve()))
 
     def test_unknown_drone_rejected(self):
         from nsy_server.ground_station import load_drone

@@ -39,7 +39,8 @@ class ReviewFixTests(unittest.TestCase):
   pipeline.set_state.assert_called_once_with('NULL')
   self.assertTrue(r.disabled)
   self.assertFalse(r.handle('hardware','second failure',pipeline,'NULL'))
-  self.assertFalse(r.handle('software','decoder failed',pipeline,'NULL'))
+  self.assertTrue(r.handle('software','decoder failed',pipeline,'NULL'))
+  self.assertEqual(r.restarts,1)
  def test_forced_hardware_does_not_silently_switch(self):
   from nsy_server.rtp_receiver import DecoderRecovery
   self.assertFalse(DecoderRecovery('hardware').handle('hardware','failed',None,'NULL'))
